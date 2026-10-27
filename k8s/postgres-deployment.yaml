@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: support-postgres
+  template:
+    metadata:
+      labels:
+        app: support-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: support-db-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: support-db-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: support-db-secret
+                  key: POSTGRES_DB
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d/init.sql
+              subPath: init.sql
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: support-postgres-pvc
+        - name: init-script
+          configMap:
+            name: support-db-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: support-postgres
+spec:
+  selector:
+    app: support-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP
